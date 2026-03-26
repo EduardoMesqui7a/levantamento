@@ -8,8 +8,8 @@ from src.levantamento.exporters import dataframe_exports, result_to_json
 from src.levantamento.processor import process_pdf
 
 
-APP_TITLE = "Project EAP Builder"
-APP_SUBTITLE = "Upload a PDF and get an EAP plus a materials list."
+APP_TITLE = "EAP Orçamentária"
+APP_SUBTITLE = "Envie um PDF de projeto e receba uma EAP pronta para orçamento, com lista de materiais."
 
 
 def _load_env() -> None:
@@ -34,53 +34,141 @@ def _get_secret(name: str, default: str = "") -> str:
 
 
 def _get_api_key() -> str:
-    return (
-        os.getenv("OPENAI_API_KEY")
-        or _get_secret("OPENAI_API_KEY", "")
+    return os.getenv("OPENAI_API_KEY") or _get_secret("OPENAI_API_KEY", "")
+
+
+def _inject_styles() -> None:
+    st.markdown(
+        """
+        <style>
+            .stApp {
+                background:
+                    radial-gradient(circle at top left, rgba(15, 118, 110, 0.10), transparent 32%),
+                    linear-gradient(180deg, #F8FAFC 0%, #EEF2F7 100%);
+                color: #0F172A;
+            }
+            .block-container {
+                padding-top: 1.25rem;
+                padding-bottom: 2.5rem;
+                max-width: 1280px;
+            }
+            .hero {
+                background: linear-gradient(135deg, #102A43 0%, #0F766E 55%, #134E4A 100%);
+                color: white;
+                border-radius: 28px;
+                padding: 2rem 2rem 1.75rem 2rem;
+                margin-bottom: 1.25rem;
+                box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+            }
+            .hero h1 {
+                margin: 0;
+                font-size: 3rem;
+                line-height: 1.05;
+                letter-spacing: -0.03em;
+            }
+            .hero p {
+                margin-top: 0.75rem;
+                margin-bottom: 0;
+                max-width: 860px;
+                font-size: 1.02rem;
+                color: rgba(255, 255, 255, 0.92);
+            }
+            .stMetric {
+                background: rgba(255, 255, 255, 0.75);
+                border: 1px solid rgba(15, 23, 42, 0.08);
+                border-radius: 18px;
+                padding: 0.85rem 1rem;
+            }
+            div[data-testid="stFileUploaderDropzone"] {
+                border-radius: 20px;
+                border: 1px dashed rgba(15, 118, 110, 0.35);
+                background: rgba(255, 255, 255, 0.85);
+            }
+            div[data-testid="stDataFrame"] {
+                border-radius: 18px;
+                overflow: hidden;
+                border: 1px solid rgba(15, 23, 42, 0.08);
+            }
+            section[data-testid="stSidebar"] {
+                background: linear-gradient(180deg, #F8FAFC 0%, #EEF2F7 100%);
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
 
 def _render_tree(items, level: int = 0) -> None:
+    palette = ["#102A43", "#0F766E", "#0369A1", "#7C3AED"]
     for item in items:
-        cols = st.columns([4, 1, 1, 1])
-        indent = "    " * level
-        cols[0].markdown(f"**{indent}{item.get('code', '')} {item.get('name', '')}**")
-        cols[1].write(item.get("quantity", ""))
-        cols[2].write(item.get("unit", ""))
-        cols[3].write(f"{item.get('confidence', 0):.0%}")
-        if item.get("description"):
-            st.caption(item["description"])
-        if item.get("children"):
-            _render_tree(item["children"], level + 1)
+        code = item.get("item", "")
+        descricao = item.get("descricao", "")
+        unidade = item.get("unidade", "")
+        preco_unitario = item.get("preco_unitario", 0.0)
+        preco_total = item.get("preco_total", 0.0)
+        observacoes = item.get("observacoes", "")
+        color = palette[min(level, len(palette) - 1)]
+        st.markdown(
+            f"""
+            <div style="padding: 0.85rem 1rem; border-left: 5px solid {color}; margin: 0.35rem 0 0.65rem 0; background: rgba(255,255,255,0.82); border-radius: 14px;">
+                <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+                    <div>
+                        <div style="font-weight:700; color:{color}; font-size:1rem;">{code} — {descricao}</div>
+                        <div style="font-size:0.9rem; color:#475569; margin-top:0.25rem;">Unidade: {unidade or '—'} | Observações: {observacoes or '—'}</div>
+                    </div>
+                    <div style="text-align:right; min-width: 180px;">
+                        <div style="font-size:0.86rem; color:#64748B;">Preço unitário</div>
+                        <div style="font-weight:600; color:#0F172A;">R$ {preco_unitario:,.2f}</div>
+                        <div style="font-size:0.86rem; color:#64748B; margin-top:0.35rem;">Preço total</div>
+                        <div style="font-weight:600; color:#0F172A;">R$ {preco_total:,.2f}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if item.get("filhos"):
+            _render_tree(item["filhos"], level + 1)
+
+
+def _currency_formatter(value) -> str:
+    try:
+        return f"R$ {float(value):,.2f}"
+    except Exception:  # noqa: BLE001
+        return "R$ 0,00"
 
 
 def main() -> None:
     _load_env()
     st.set_page_config(page_title=APP_TITLE, page_icon=":page_facing_up:", layout="wide")
+    _inject_styles()
 
-    st.title(APP_TITLE)
-    st.write(APP_SUBTITLE)
-    st.caption(
-        "This MVP is designed for tests with PDF files first. If OpenAI credentials are not set, "
-        "the app still produces a heuristic demo result so you can validate the flow."
+    st.markdown(
+        f"""
+        <div class="hero">
+            <h1>{APP_TITLE}</h1>
+            <p>{APP_SUBTITLE}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     with st.sidebar:
-        st.header("Settings")
+        st.header("Configurações")
         st.text_input(
-            "OpenAI model",
+            "Modelo da IA",
             value=os.getenv("OPENAI_MODEL", _get_secret("OPENAI_MODEL", "gpt-4o-mini")),
             key="openai_model",
         )
-        api_key_loaded = bool(_get_api_key())
-        if api_key_loaded:
-            st.success("API key loaded automatically.")
+        if _get_api_key():
+            st.success("Chave da IA carregada automaticamente.")
         else:
-            st.warning("No API key detected. Add one to .streamlit/secrets.toml or your environment.")
-        st.caption("The key is never entered in the UI and is only read from secrets/environment.")
+            st.warning("Nenhuma chave detectada. Adicione em `.streamlit/secrets.toml` ou nas variáveis do ambiente.")
+        st.caption("A chave não é solicitada na interface. Ela é lida apenas de segredos ou do ambiente.")
 
-    uploaded = st.file_uploader("Upload project PDF", type=["pdf"])
-    run = st.button("Process PDF", type="primary", disabled=uploaded is None)
+    st.markdown("### Área de trabalho")
+    uploaded = st.file_uploader("Enviar PDF do projeto", type=["pdf"])
+    run = st.button("Gerar EAP e materiais", type="primary", disabled=uploaded is None)
 
     if "result" not in st.session_state:
         st.session_state.result = None
@@ -88,7 +176,7 @@ def main() -> None:
         st.session_state.raw_error = None
 
     if run and uploaded is not None:
-        with st.spinner("Processing file..."):
+        with st.spinner("Analisando o projeto..."):
             try:
                 st.session_state.result = process_pdf(
                     file_bytes=uploaded.getvalue(),
@@ -106,61 +194,69 @@ def main() -> None:
 
     result = st.session_state.result
     if not result:
-        st.info("Upload a PDF to start.")
+        st.info("Envie um PDF para começar.")
         return
 
-    summary = result.get("summary", "")
-    warnings = result.get("warnings", [])
-    meta = result.get("metadata", {})
+    resumo = result.get("resumo", "")
+    avisos = result.get("avisos", [])
+    metadados = result.get("metadados", {})
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Pages", meta.get("pages", 0))
-    c2.metric("Text chars", meta.get("text_char_count", 0))
-    c3.metric("Materials", len(result.get("materials", [])))
-    c4.metric("EAP nodes", result.get("eap_count", 0))
+    c1.metric("Páginas", metadados.get("paginas", 0))
+    c2.metric("Caracteres", metadados.get("caracteres_extraidos", 0))
+    c3.metric("Materiais", len(result.get("materiais", [])))
+    c4.metric("Itens da EAP", result.get("total_itens_eap", 0))
 
-    if warnings:
-        st.warning("\n".join(f"- {warning}" for warning in warnings))
+    if avisos:
+        st.warning("\n".join(f"- {aviso}" for aviso in avisos))
 
-    if summary:
-        st.subheader("Project summary")
-        st.write(summary)
+    if resumo:
+        st.markdown("### Resumo do projeto")
+        st.write(resumo)
 
-    st.subheader("EAP tree")
+    st.markdown("### EAP estruturada")
     eap = result.get("eap", [])
     if eap:
         _render_tree(eap)
     else:
-        st.info("No EAP items were generated.")
+        st.info("Nenhum item de EAP foi gerado.")
 
-    st.subheader("Materials list")
-    materials = result.get("materials", [])
-    if materials:
-        st.dataframe(materials, use_container_width=True, hide_index=True)
+    st.markdown("### Lista de materiais")
+    materiais = dataframe_exports(result).materiais_dataframe()
+    if not materiais.empty:
+        materiais_visuais = materiais.copy()
+        if "CONFIANÇA" in materiais_visuais.columns:
+            materiais_visuais["CONFIANÇA"] = materiais_visuais["CONFIANÇA"].map(lambda v: f"{float(v) * 100:.0f}%")
+        st.dataframe(
+            materiais_visuais,
+            use_container_width=True,
+            hide_index=True,
+        )
     else:
-        st.info("No materials were generated.")
+        st.info("Nenhum material foi gerado.")
 
-    st.subheader("Exports")
-    json_payload = result_to_json(result)
-    json_bytes = json_payload.encode("utf-8")
+    st.markdown("### Download")
+    export_bundle = dataframe_exports(result)
+    excel_bytes = export_bundle.to_excel_bytes()
     st.download_button(
-        "Download JSON",
-        data=json_bytes,
-        file_name="eap_materials.json",
-        mime="application/json",
-    )
-
-    export_frames = dataframe_exports(result)
-    excel_bytes = export_frames.to_excel_bytes()
-    st.download_button(
-        "Download Excel",
+        "Baixar planilha Excel",
         data=excel_bytes,
-        file_name="eap_materials.xlsx",
+        file_name="EAP_Orcamentaria.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    with st.expander("Raw JSON"):
+    json_payload = result_to_json(result)
+    st.download_button(
+        "Baixar JSON",
+        data=json_payload.encode("utf-8"),
+        file_name="EAP_Orcamentaria.json",
+        mime="application/json",
+    )
+
+    with st.expander("JSON bruto"):
         st.code(json.dumps(result, ensure_ascii=False, indent=2), language="json")
+
+    st.caption("A planilha Excel é gerada com cores, hierarquia e colunas prontas para orçamento.")
 
 
 if __name__ == "__main__":

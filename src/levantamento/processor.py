@@ -10,16 +10,16 @@ from src.levantamento.models import EAPItem, MaterialItem
 from src.levantamento.pdf_tools import extract_pdf_pages
 
 
-def _clip(text: str, limit: int = 7000) -> str:
+def _clip(text: str, limit: int = 9000) -> str:
     if len(text) <= limit:
         return text
-    return text[:limit] + "\n\n[TRUNCATED]"
+    return text[:limit] + "\n\n[CONTEÚDO TRUNCADO]"
 
 
 def _compile_document_text(pages) -> str:
     chunks = []
     for page in pages:
-        header = f"[PAGE {page.page_number} | OCR={page.used_ocr}]"
+        header = f"[PÁGINA {page.page_number} | OCR={page.used_ocr}]"
         chunks.append(f"{header}\n{page.text}")
     return "\n\n".join(chunks)
 
@@ -39,43 +39,67 @@ def _heuristic_extract(document_text: str) -> dict[str, Any]:
         "telhado",
         "piso",
         "revestimento",
+        "forro",
+        "laje",
+        "impermeabilização",
     ]
-    hits = []
-    for line in lines:
-        lower = line.lower()
-        if any(keyword in lower for keyword in keywords):
-            hits.append(line)
-
+    hits = [line for line in lines if any(keyword in line.lower() for keyword in keywords)]
     if not hits:
         hits = lines[:12]
 
     eap = [
-        EAPItem(code="1", name="Levantamento preliminar", description="Auto-generated fallback structure", confidence=0.42),
-        EAPItem(code="1.1", name="Leitura do projeto", description="Review drawings and identify systems", confidence=0.42),
-        EAPItem(code="1.2", name="EAP por sistemas", description="Breakdown by discipline and construction system", confidence=0.42),
+        EAPItem(
+            descricao="Levantamento preliminar e conferência geral do projeto",
+            unidade="serviço",
+            preco_unitario=0.0,
+            preco_total=0.0,
+            observacoes="Estrutura inicial gerada por heurística.",
+            filhos=[
+                EAPItem(
+                    descricao="Leitura e interpretação do projeto",
+                    unidade="serviço",
+                    preco_unitario=0.0,
+                    preco_total=0.0,
+                ),
+                EAPItem(
+                    descricao="Estruturação da EAP por disciplinas",
+                    unidade="serviço",
+                    preco_unitario=0.0,
+                    preco_total=0.0,
+                ),
+            ],
+        ),
+        EAPItem(
+            descricao="Consolidação de materiais e componentes identificados",
+            unidade="serviço",
+            preco_unitario=0.0,
+            preco_total=0.0,
+            observacoes="Revisar manualmente antes de usar em orçamento.",
+        ),
     ]
-    materials = []
+
+    materiais = []
     for idx, hit in enumerate(hits[:18], start=1):
-        materials.append(
+        materiais.append(
             MaterialItem(
-                description=hit[:120],
-                unit="un",
-                quantity="1",
-                source=f"Fallback line {idx}",
-                confidence=0.3,
-                category="Heuristic",
+                descricao=hit[:140],
+                unidade="un",
+                quantidade="1",
+                origem=f"Linha heurística {idx}",
+                confianca=0.3,
+                categoria="Heurística",
             )
         )
 
     return {
-        "project_type": "Unknown",
-        "summary": "Fallback heuristic result generated because OpenAI key was not provided.",
-        "warnings": [
-            "OpenAI API key not provided. Result generated using heuristic fallback.",
-            "Review quantities and descriptions manually before using this output for budgeting.",
+        "tipo_projeto": "Não identificado",
+        "resumo": "Resultado gerado por heurística porque a IA não foi acionada.",
+        "avisos": [
+            "A chave da IA não foi encontrada. O sistema gerou uma estrutura inicial automática.",
+            "Revise manualmente itens, unidades e quantidades antes de usar no orçamento.",
         ],
         "eap": [item.to_dict() for item in eap],
-        "materials": [item.to_dict() for item in materials],
+        "materiais": [item.to_dict() for item in materiais],
     }
 
 
@@ -87,60 +111,63 @@ def _parse_json_response(raw_text: str) -> dict[str, Any]:
 
     match = re.search(r"\{.*\}", raw_text, flags=re.DOTALL)
     if not match:
-        raise ValueError("The AI response did not contain JSON.")
+        raise ValueError("A resposta da IA não trouxe JSON válido.")
     return json.loads(match.group(0))
 
 
 def _call_openai(document_text: str, api_key: str, model: str) -> dict[str, Any]:
     client = OpenAI(api_key=api_key)
     prompt = f"""
-You are helping engineers, architects and estimators.
-Read the project text and return strict JSON only.
+Você é um assistente especializado em orçamentos de engenharia, arquitetura e levantamento quantitativo.
 
-Return this shape:
+Leia o texto do projeto e retorne SOMENTE JSON válido, em português, com esta estrutura:
 {{
-  "project_type": "string",
-  "summary": "string",
-  "warnings": ["string"],
+  "tipo_projeto": "string",
+  "resumo": "string",
+  "avisos": ["string"],
   "eap": [
     {{
-      "code": "string",
-      "name": "string",
-      "description": "string",
-      "unit": "string",
-      "quantity": "string",
-      "confidence": 0.0,
-      "children": []
+      "descricao": "string",
+      "unidade": "string",
+      "quantidade": "string",
+      "preco_unitario": 0.0,
+      "preco_total": 0.0,
+      "observacoes": "string",
+      "filhos": []
     }}
   ],
-  "materials": [
+  "materiais": [
     {{
-      "description": "string",
-      "unit": "string",
-      "quantity": "string",
-      "source": "string",
-      "confidence": 0.0,
-      "category": "string"
+      "descricao": "string",
+      "unidade": "string",
+      "quantidade": "string",
+      "origem": "string",
+      "confianca": 0.0,
+      "categoria": "string"
     }}
   ]
 }}
 
-Rules:
-- Do not add prices.
-- Prefer real terms found in the project.
-- If something is inferred, set low confidence and explain in warnings.
-- Limit the response to practical items only.
-- Keep the EAP hierarchical and concise.
-- Produce at least one EAP branch and at least five materials when possible.
+Regras obrigatórias:
+- Não invente preços.
+- Preencha "preco_unitario" e "preco_total" com 0 quando não houver precificação.
+- Estruture a EAP como uma árvore pronta para orçamento.
+- Use numeração lógica na estrutura e organize por disciplinas e sistemas.
+- Gere itens com cara de orçamento executivo, por exemplo: preliminares, estrutura, vedações, instalações, acabamentos, cobertura, esquadrias.
+- Mantenha o texto em português com acentuação correta.
+- Quando um item for inferido, indique isso em "observacoes" e use menor confiança.
+- Prefira termos técnicos presentes no projeto.
+- Se o projeto estiver incompleto, ainda assim retorne uma estrutura útil.
+- Crie ao menos 3 níveis de análise quando o conteúdo permitir.
 
-Project text:
+Texto do projeto:
 {_clip(document_text)}
 """.strip()
 
     response = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "Return JSON only."},
+            {"role": "system", "content": "Responda somente com JSON válido em português."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
@@ -149,94 +176,108 @@ Project text:
     return _parse_json_response(raw_text)
 
 
-def _normalize_result(data: dict[str, Any], filename: str, pages, used_ai: bool) -> dict[str, Any]:
-    eap = data.get("eap", [])
-    materials = data.get("materials", [])
-    warnings = data.get("warnings", [])
-
-    def ensure_children(nodes):
-        normalized = []
-        for index, item in enumerate(nodes, start=1):
-            children = ensure_children(item.get("children", []))
-            normalized.append(
-                {
-                    "code": str(item.get("code") or index),
-                    "name": str(item.get("name") or "Unnamed item"),
-                    "description": str(item.get("description") or ""),
-                    "unit": str(item.get("unit") or ""),
-                    "quantity": str(item.get("quantity") or ""),
-                    "confidence": float(item.get("confidence") or 0.0),
-                    "children": children,
-                }
-            )
-        return normalized
-
-    def normalize_materials(items):
-        normalized = []
-        for item in items:
-            normalized.append(
-                {
-                    "description": str(item.get("description") or ""),
-                    "unit": str(item.get("unit") or ""),
-                    "quantity": str(item.get("quantity") or ""),
-                    "source": str(item.get("source") or ""),
-                    "confidence": float(item.get("confidence") or 0.0),
-                    "category": str(item.get("category") or ""),
-                }
-            )
-        return normalized
-
-    normalized_eap = ensure_children(eap)
-    normalized_materials = normalize_materials(materials)
-
-    if not normalized_eap:
-        normalized_eap = [
+def _normalize_materials(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized = []
+    for item in items:
+        normalized.append(
             {
-                "code": "1",
-                "name": "Project analysis",
-                "description": "Top level analysis generated automatically.",
-                "unit": "",
-                "quantity": "",
-                "confidence": 0.5,
-                "children": [],
+                "descricao": str(item.get("descricao") or item.get("description") or ""),
+                "unidade": str(item.get("unidade") or item.get("unit") or ""),
+                "quantidade": str(item.get("quantidade") or item.get("quantity") or ""),
+                "origem": str(item.get("origem") or item.get("source") or ""),
+                "confianca": float(item.get("confianca") or item.get("confidence") or 0.0),
+                "categoria": str(item.get("categoria") or item.get("category") or ""),
             }
-        ]
+        )
+    return normalized
 
-    if not normalized_materials:
-        normalized_materials = [
+
+def _normalize_eap_nodes(nodes: list[dict[str, Any]], parent_code: str = "") -> list[dict[str, Any]]:
+    normalized = []
+    for index, item in enumerate(nodes, start=1):
+        code = f"{parent_code}.{index}" if parent_code else str(index)
+        children_source = item.get("filhos") or item.get("children") or []
+        children = _normalize_eap_nodes(children_source, code)
+        normalized.append(
             {
-                "description": "Project review and structuring",
-                "unit": "service",
-                "quantity": "1",
-                "source": "Derived from document analysis",
-                "confidence": 0.4,
-                "category": "Analysis",
+                "item": code,
+                "descricao": str(item.get("descricao") or item.get("description") or item.get("name") or "Item sem descrição"),
+                "unidade": str(item.get("unidade") or item.get("unit") or ""),
+                "quantidade": str(item.get("quantidade") or item.get("quantity") or ""),
+                "preco_unitario": float(item.get("preco_unitario") or item.get("unit_price") or 0.0),
+                "preco_total": float(item.get("preco_total") or item.get("total_price") or 0.0),
+                "observacoes": str(item.get("observacoes") or item.get("description") or ""),
+                "filhos": children,
             }
-        ]
-
-    return {
-        "project_type": data.get("project_type", "Unknown"),
-        "summary": data.get("summary", ""),
-        "warnings": warnings,
-        "eap": normalized_eap,
-        "materials": normalized_materials,
-        "metadata": {
-            "filename": filename,
-            "pages": len(pages),
-            "text_char_count": sum(len(page.text) for page in pages),
-            "used_ai": used_ai,
-            "ocr_pages": sum(1 for page in pages if page.used_ocr),
-        },
-        "eap_count": _count_nodes(normalized_eap),
-    }
+        )
+    return normalized
 
 
 def _count_nodes(items) -> int:
     total = 0
     for item in items:
         total += 1
-        total += _count_nodes(item.get("children", []))
+        total += _count_nodes(item.get("filhos", []))
     return total
+
+
+def _normalize_result(data: dict[str, Any], filename: str, pages, used_ai: bool) -> dict[str, Any]:
+    eap = _normalize_eap_nodes(data.get("eap", []) or [])
+    materiais = _normalize_materials(data.get("materiais", []) or data.get("materials", []) or [])
+    avisos = list(data.get("avisos", []) or data.get("warnings", []) or [])
+
+    if not eap:
+        eap = [
+            {
+                "item": "1",
+                "descricao": "Levantamento preliminar",
+                "unidade": "serviço",
+                "quantidade": "1",
+                "preco_unitario": 0.0,
+                "preco_total": 0.0,
+                "observacoes": "Estrutura inicial gerada automaticamente.",
+                "filhos": [
+                    {
+                        "item": "1.1",
+                        "descricao": "Leitura e interpretação do projeto",
+                        "unidade": "serviço",
+                        "quantidade": "1",
+                        "preco_unitario": 0.0,
+                        "preco_total": 0.0,
+                        "observacoes": "",
+                        "filhos": [],
+                    }
+                ],
+            }
+        ]
+
+    if not materiais:
+        materiais = [
+            {
+                "descricao": "Levantamento técnico e estruturação da EAP",
+                "unidade": "serviço",
+                "quantidade": "1",
+                "origem": "Análise do documento",
+                "confianca": 0.4,
+                "categoria": "Análise",
+            }
+        ]
+
+    return {
+        "tipo_projeto": data.get("tipo_projeto", "Não identificado"),
+        "resumo": data.get("resumo", ""),
+        "avisos": avisos,
+        "eap": eap,
+        "materiais": materiais,
+        "metadados": {
+            "arquivo": filename,
+            "paginas": len(pages),
+            "caracteres_extraidos": sum(len(page.text) for page in pages),
+            "uso_ia": used_ai,
+            "paginas_ocr": sum(1 for page in pages if page.used_ocr),
+        },
+        "total_itens_eap": _count_nodes(eap),
+    }
 
 
 def process_pdf(file_bytes: bytes, filename: str, api_key: str | None, model: str) -> dict[str, Any]:
@@ -244,7 +285,7 @@ def process_pdf(file_bytes: bytes, filename: str, api_key: str | None, model: st
     document_text = _compile_document_text(pages)
 
     if len(document_text.strip()) < 80:
-        raise ValueError("The PDF did not contain enough readable text for analysis.")
+        raise ValueError("O PDF não possui texto legível suficiente para análise.")
 
     if api_key:
         try:
@@ -252,9 +293,8 @@ def process_pdf(file_bytes: bytes, filename: str, api_key: str | None, model: st
             return _normalize_result(data, filename=filename, pages=pages, used_ai=True)
         except Exception as exc:  # noqa: BLE001
             fallback = _heuristic_extract(document_text)
-            fallback["warnings"].insert(0, f"OpenAI call failed, using fallback heuristic output: {exc}")
+            fallback["avisos"].insert(0, f"Falha ao consultar a IA. Saída heurística usada: {exc}")
             return _normalize_result(fallback, filename=filename, pages=pages, used_ai=False)
 
     fallback = _heuristic_extract(document_text)
     return _normalize_result(fallback, filename=filename, pages=pages, used_ai=False)
-

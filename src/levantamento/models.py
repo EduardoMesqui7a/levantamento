@@ -4,29 +4,29 @@ from typing import Any
 
 @dataclass
 class EAPItem:
-    code: str
-    name: str
-    description: str = ""
-    unit: str = ""
-    quantity: str = ""
-    confidence: float = 0.0
-    children: list["EAPItem"] = field(default_factory=list)
+    descricao: str
+    unidade: str = ""
+    quantidade: str = ""
+    preco_unitario: float = 0.0
+    preco_total: float = 0.0
+    observacoes: str = ""
+    filhos: list["EAPItem"] = field(default_factory=list)
+    item: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["children"] = [child.to_dict() for child in self.children]
+        data["filhos"] = [child.to_dict() for child in self.filhos]
         return data
 
 
 @dataclass
 class MaterialItem:
-    description: str
-    unit: str = ""
-    quantity: str = ""
-    source: str = ""
-    confidence: float = 0.0
-    category: str = ""
+    descricao: str
+    unidade: str = ""
+    quantidade: str = ""
+    origem: str = ""
+    confianca: float = 0.0
+    categoria: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-

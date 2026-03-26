@@ -1,56 +1,66 @@
-# Project EAP Builder
+# EAP Orçamentária
 
-MVP web app in Streamlit for engineering and architecture project takeoff.
+Aplicação em Streamlit para enviar projetos em PDF e gerar uma EAP estruturada para orçamento, com lista de materiais e exportação em Excel estilizado.
 
-## Features
+## Funcionalidades
 
-- PDF upload
-- Text extraction per page
-- Optional OCR fallback
-- GPT-powered EAP and materials extraction
-- JSON and Excel export
+- Upload de PDF
+- Extração de texto por página
+- OCR opcional para páginas escaneadas
+- Geração de EAP em português
+- Lista de materiais em português
+- Download em Excel com cores e hierarquia
+- Download em JSON
 
-## Setup
+## Estrutura da planilha
 
-1. Install Python 3.12 or newer.
-2. Install dependencies:
+O arquivo final de Excel inclui colunas prontas para orçamento:
+
+- ITEM
+- DESCRIÇÃO
+- UNIDADE
+- PREÇO UNITÁRIO
+- PREÇO TOTAL
+
+Os itens são numerados automaticamente como `1`, `1.1`, `1.2`, `2` e assim por diante.
+
+## Como rodar localmente
+
+1. Instale as dependências:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set environment variables:
+2. Configure a chave da IA:
 
 ```bash
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-For local development, you can also create a private file at `.streamlit/secrets.toml` with the same keys.
-That file is ignored by Git and will be read automatically by Streamlit.
+Também é possível usar um arquivo local não commitado em `.streamlit/secrets.toml`.
 
-4. Run the app:
+3. Execute o app:
 
 ```bash
 streamlit run app.py
 ```
 
-## Streamlit Cloud Deploy
+## Deploy no Streamlit Cloud
 
-1. Push this repository to GitHub.
-2. In Streamlit Cloud, create a new app from the repo.
-3. Use `app.py` as the entrypoint.
-4. Add secrets in the Streamlit Cloud dashboard:
+1. Publique este repositório no GitHub.
+2. Crie um app no Streamlit Cloud apontando para este repositório.
+3. Use `app.py` como arquivo principal.
+4. Adicione os secrets no painel do Streamlit Cloud:
 
 ```toml
-OPENAI_API_KEY = "your_key_here"
+OPENAI_API_KEY = "sua_chave_aqui"
 OPENAI_MODEL = "gpt-4o-mini"
 ```
 
-5. Deploy the app.
+## Observações
 
-## Notes
-
-- The app starts in PDF-only mode.
-- If the OpenAI key is missing, a heuristic fallback output is generated for testing the UI flow.
-- The exposed API key in the chat should be rotated before production use.
+- A aplicação está em português.
+- A saída prioriza estrutura de orçamento, não precificação real.
+- Os valores de `PREÇO UNITÁRIO` e `PREÇO TOTAL` são gerados como `0,00` até você integrar sua base de custos.
