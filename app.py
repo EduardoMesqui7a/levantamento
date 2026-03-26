@@ -160,7 +160,8 @@ def main() -> None:
             value=os.getenv("OPENAI_MODEL", _get_secret("OPENAI_MODEL", "gpt-4o-mini")),
             key="openai_model",
         )
-        if _get_api_key():
+        api_key_present = bool(_get_api_key())
+        if api_key_present:
             st.success("Chave da IA carregada automaticamente.")
         else:
             st.warning("Nenhuma chave detectada. Adicione em `.streamlit/secrets.toml` ou nas variáveis do ambiente.")
@@ -168,12 +169,15 @@ def main() -> None:
 
     st.markdown("### Área de trabalho")
     uploaded = st.file_uploader("Enviar PDF do projeto", type=["pdf"])
-    run = st.button("Gerar EAP e materiais", type="primary", disabled=uploaded is None)
+    run = st.button("Gerar EAP e materiais", type="primary", disabled=uploaded is None or not api_key_present)
 
     if "result" not in st.session_state:
         st.session_state.result = None
     if "raw_error" not in st.session_state:
         st.session_state.raw_error = None
+
+    if not api_key_present:
+        st.error("A IA precisa estar configurada para gerar a EAP. Adicione a chave OpenAI nos segredos locais ou do Streamlit Cloud.")
 
     if run and uploaded is not None:
         with st.spinner("Analisando o projeto..."):

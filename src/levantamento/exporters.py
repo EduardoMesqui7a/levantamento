@@ -30,6 +30,7 @@ def _flatten_eap(items, nivel: int = 0):
                 "item": item.get("item", ""),
                 "descricao": item.get("descricao", ""),
                 "unidade": item.get("unidade", ""),
+                "quantidade": item.get("quantidade", ""),
                 "preco_unitario": float(item.get("preco_unitario", 0.0) or 0.0),
                 "preco_total": float(item.get("preco_total", 0.0) or 0.0),
                 "nivel": nivel,
@@ -69,18 +70,17 @@ class DataFrameExports:
     def eap_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(_flatten_eap(self.result.get("eap", [])))
         if df.empty:
-            return pd.DataFrame(columns=["ITEM", "DESCRIÇÃO", "UNIDADE", "PREÇO UNITÁRIO", "PREÇO TOTAL", "NÍVEL", "OBSERVAÇÕES"])
+            return pd.DataFrame(columns=["ITEM", "DESCRIÇÃO", "UNIDADE", "QUANTIDADE", "PREÇO UNITÁRIO", "PREÇO TOTAL"])
         return df.rename(
             columns={
                 "item": "ITEM",
                 "descricao": "DESCRIÇÃO",
                 "unidade": "UNIDADE",
+                "quantidade": "QUANTIDADE",
                 "preco_unitario": "PREÇO UNITÁRIO",
                 "preco_total": "PREÇO TOTAL",
-                "nivel": "NÍVEL",
-                "observacoes": "OBSERVAÇÕES",
             }
-        )
+        )[["ITEM", "DESCRIÇÃO", "UNIDADE", "QUANTIDADE", "PREÇO UNITÁRIO", "PREÇO TOTAL"]]
 
     def materiais_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(_flatten_materiais(self.result.get("materiais", [])))
@@ -97,7 +97,25 @@ class DataFrameExports:
             }
         )
 
-    def _write_title_block(self, ws) -> None:
+    def _merge_title_block(self, ws, end_col: int) -> None:
+        for row in range(1, 5):
+            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=end_col)
+            cell = ws.cell(row=row, column=1)
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+            cell.fill = PatternFill("solid", fgColor=PALETA["verde_claro"])
+            cell.border = Border(
+                left=Side(style="thin", color=PALETA["cinza"]),
+                right=Side(style="thin", color=PALETA["cinza"]),
+                top=Side(style="thin", color=PALETA["cinza"]),
+                bottom=Side(style="thin", color=PALETA["cinza"]),
+            )
+        ws.row_dimensions[1].height = 26
+        ws.row_dimensions[2].height = 22
+        ws.row_dimensions[3].height = 34
+        ws.row_dimensions[4].height = 24
+
+    def _write_title_block(self, ws, end_col: int) -> None:
+        self._merge_title_block(ws, end_col)
         ws["A1"] = "EAP ORÇAMENTÁRIA"
         ws["A1"].font = Font(size=18, bold=True, color=PALETA["verde"])
         ws["A2"] = f"Projeto: {self.result.get('tipo_projeto', 'Não identificado')}"
@@ -134,7 +152,7 @@ class DataFrameExports:
         for col, width in widths.items():
             ws.column_dimensions[col].width = width
 
-    def _style_budget_rows(self, ws, start_row: int, max_row: int) -> None:
+    def _style_budget_rows(self, ws, rows, start_row: int) -> None:
         fills = {
             0: PatternFill("solid", fgColor="EFF6FF"),
             1: PatternFill("solid", fgColor="F0FDFA"),
@@ -145,11 +163,11 @@ class DataFrameExports:
         thin = Side(style="thin", color=PALETA["cinza"])
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        for row in range(start_row, max_row + 1):
-            nivel = int(ws.cell(row=row, column=6).value or 0)
+        for offset, row_data in enumerate(rows, start=start_row):
+            nivel = int(row_data.get("nivel", 0) or 0)
             fill = fills.get(min(nivel, 3), fills[3])
-            for col in range(1, 6):
-                cell = ws.cell(row=row, column=col)
+            for col in range(1, 7):
+                cell = ws.cell(row=offset, column=col)
                 cell.fill = fill
                 cell.border = border
                 if col == 2:
@@ -160,17 +178,18 @@ class DataFrameExports:
                 else:
                     cell.alignment = Alignment(horizontal="right", vertical="top", wrap_text=True)
 
-            ws.cell(row=row, column=4).number_format = currency
-            ws.cell(row=row, column=5).number_format = currency
+            ws.cell(row=offset, column=4).number_format = "General"
+            ws.cell(row=offset, column=5).number_format = currency
+            ws.cell(row=offset, column=6).number_format = currency
 
     def to_excel_bytes(self) -> bytes:
         wb = Workbook()
         ws_orc = wb.active
         ws_orc.title = "Orçamento"
 
-        self._write_title_block(ws_orc)
+        self._write_title_block(ws_orc, end_col=6)
 
-        headers = ["ITEM", "DESCRIÇÃO", "UNIDADE", "PREÇO UNITÁRIO", "PREÇO TOTAL", "NÍVEL", "OBSERVAÇÕES"]
+        headers = ["ITEM", "DESCRIÇÃO", "UNIDADE", "QUANTIDADE", "PREÇO UNITÁRIO", "PREÇO TOTAL"]
         header_row = 6
         for col, header in enumerate(headers, start=1):
             cell = ws_orc.cell(row=header_row, column=col, value=header)
@@ -178,16 +197,16 @@ class DataFrameExports:
             cell.fill = PatternFill("solid", fgColor=PALETA["azul_escuro"])
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        for row_idx, row in enumerate(_flatten_eap(self.result.get("eap", [])), start=header_row + 1):
+        eap_rows = _flatten_eap(self.result.get("eap", []))
+        for row_idx, row in enumerate(eap_rows, start=header_row + 1):
             ws_orc.cell(row=row_idx, column=1, value=row["item"])
             ws_orc.cell(row=row_idx, column=2, value=row["descricao"])
             ws_orc.cell(row=row_idx, column=3, value=row["unidade"])
-            ws_orc.cell(row=row_idx, column=4, value=row["preco_unitario"])
-            ws_orc.cell(row=row_idx, column=5, value=row["preco_total"])
-            ws_orc.cell(row=row_idx, column=6, value=row["nivel"])
-            ws_orc.cell(row=row_idx, column=7, value=row["observacoes"])
+            ws_orc.cell(row=row_idx, column=4, value=row["quantidade"])
+            ws_orc.cell(row=row_idx, column=5, value=row["preco_unitario"])
+            ws_orc.cell(row=row_idx, column=6, value=row["preco_total"])
 
-        self._style_budget_rows(ws_orc, start_row=header_row + 1, max_row=ws_orc.max_row)
+        self._style_budget_rows(ws_orc, eap_rows, start_row=header_row + 1)
         self._style_sheet(ws_orc, header_row=header_row, freeze_cell="A7")
         self._set_widths(
             ws_orc,
@@ -195,27 +214,31 @@ class DataFrameExports:
                 "A": 12,
                 "B": 58,
                 "C": 14,
-                "D": 18,
+                "D": 14,
                 "E": 18,
-                "F": 10,
-                "G": 42,
+                "F": 18,
             },
         )
 
         ws_materiais = wb.create_sheet("Materiais")
+        self._merge_title_block(ws_materiais, end_col=6)
         ws_materiais["A1"] = "LISTA DE MATERIAIS"
         ws_materiais["A1"].font = Font(size=18, bold=True, color=PALETA["verde"])
         ws_materiais["A2"] = f"Projeto: {self.result.get('tipo_projeto', 'Não identificado')}"
         ws_materiais["A2"].font = Font(size=11, color=PALETA["texto"])
+        ws_materiais["A3"] = "Somente itens que a IA classificou como materiais, componentes ou serviços técnicos pertinentes."
+        ws_materiais["A3"].font = Font(size=10, color=PALETA["texto"])
+        ws_materiais["A4"] = "Linhas de observação e recomendações gerais são filtradas na etapa de revisão."
+        ws_materiais["A4"].font = Font(size=10, color=PALETA["texto"])
 
         material_headers = ["DESCRIÇÃO", "UNIDADE", "QUANTIDADE", "ORIGEM", "CONFIANÇA", "CATEGORIA"]
         for col, header in enumerate(material_headers, start=1):
-            cell = ws_materiais.cell(row=4, column=col, value=header)
+            cell = ws_materiais.cell(row=6, column=col, value=header)
             cell.font = Font(bold=True, color=PALETA["branco"])
             cell.fill = PatternFill("solid", fgColor=PALETA["azul_escuro"])
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        for row_idx, row in enumerate(_flatten_materiais(self.result.get("materiais", [])), start=5):
+        for row_idx, row in enumerate(_flatten_materiais(self.result.get("materiais", [])), start=7):
             ws_materiais.cell(row=row_idx, column=1, value=row["descricao"])
             ws_materiais.cell(row=row_idx, column=2, value=row["unidade"])
             ws_materiais.cell(row=row_idx, column=3, value=row["quantidade"])
@@ -223,10 +246,10 @@ class DataFrameExports:
             ws_materiais.cell(row=row_idx, column=5, value=row["confianca"])
             ws_materiais.cell(row=row_idx, column=6, value=row["categoria"])
 
-        self._style_sheet(ws_materiais, header_row=4, freeze_cell="A5")
-        for cell in ws_materiais[4]:
+        self._style_sheet(ws_materiais, header_row=6, freeze_cell="A7")
+        for cell in ws_materiais[6]:
             cell.fill = PatternFill("solid", fgColor=PALETA["verde"])
-        for row in range(5, ws_materiais.max_row + 1):
+        for row in range(7, ws_materiais.max_row + 1):
             ws_materiais.cell(row=row, column=5).number_format = '0.0%'
         self._set_widths(
             ws_materiais,
@@ -241,8 +264,11 @@ class DataFrameExports:
         )
 
         ws_resumo = wb.create_sheet("Resumo")
+        self._merge_title_block(ws_resumo, end_col=2)
         ws_resumo["A1"] = "RESUMO DO LEVANTAMENTO"
         ws_resumo["A1"].font = Font(size=18, bold=True, color=PALETA["verde"])
+        ws_resumo.row_dimensions[3].height = 34
+        ws_resumo.row_dimensions[4].height = 24
         resumo_linhas = [
             ("Tipo de projeto", self.result.get("tipo_projeto", "Não identificado")),
             ("Resumo", self.result.get("resumo", "")),

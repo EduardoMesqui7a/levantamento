@@ -4,6 +4,7 @@ from typing import Any
 
 @dataclass
 class EAPItem:
+    item: str
     descricao: str
     unidade: str = ""
     quantidade: str = ""
@@ -11,7 +12,6 @@ class EAPItem:
     preco_total: float = 0.0
     observacoes: str = ""
     filhos: list["EAPItem"] = field(default_factory=list)
-    item: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

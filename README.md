@@ -7,8 +7,8 @@ Aplicação em Streamlit para enviar projetos em PDF e gerar uma EAP estruturada
 - Upload de PDF
 - Extração de texto por página
 - OCR opcional para páginas escaneadas
-- Geração de EAP em português
-- Lista de materiais em português
+- Geração de EAP em português com numeração automática
+- Lista de materiais em português revisada por IA
 - Download em Excel com cores e hierarquia
 - Download em JSON
 
@@ -19,6 +19,7 @@ O arquivo final de Excel inclui colunas prontas para orçamento:
 - ITEM
 - DESCRIÇÃO
 - UNIDADE
+- QUANTIDADE
 - PREÇO UNITÁRIO
 - PREÇO TOTAL
 
@@ -62,5 +63,6 @@ OPENAI_MODEL = "gpt-4o-mini"
 ## Observações
 
 - A aplicação está em português.
-- A saída prioriza estrutura de orçamento, não precificação real.
+- A saída depende da IA para análise, validação e filtragem.
+- A chave OpenAI é obrigatória para gerar o resultado.
 - Os valores de `PREÇO UNITÁRIO` e `PREÇO TOTAL` são gerados como `0,00` até você integrar sua base de custos.

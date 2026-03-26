@@ -6,7 +6,6 @@ from typing import Any
 
 from openai import OpenAI
 
-from src.levantamento.models import EAPItem, MaterialItem
 from src.levantamento.pdf_tools import extract_pdf_pages
 
 
@@ -24,85 +23,6 @@ def _compile_document_text(pages) -> str:
     return "\n\n".join(chunks)
 
 
-def _heuristic_extract(document_text: str) -> dict[str, Any]:
-    lines = [line.strip() for line in document_text.splitlines() if line.strip()]
-    keywords = [
-        "concreto",
-        "alvenaria",
-        "reboco",
-        "estrutura",
-        "porta",
-        "janela",
-        "tubo",
-        "fiação",
-        "cabo",
-        "telhado",
-        "piso",
-        "revestimento",
-        "forro",
-        "laje",
-        "impermeabilização",
-    ]
-    hits = [line for line in lines if any(keyword in line.lower() for keyword in keywords)]
-    if not hits:
-        hits = lines[:12]
-
-    eap = [
-        EAPItem(
-            descricao="Levantamento preliminar e conferência geral do projeto",
-            unidade="serviço",
-            preco_unitario=0.0,
-            preco_total=0.0,
-            observacoes="Estrutura inicial gerada por heurística.",
-            filhos=[
-                EAPItem(
-                    descricao="Leitura e interpretação do projeto",
-                    unidade="serviço",
-                    preco_unitario=0.0,
-                    preco_total=0.0,
-                ),
-                EAPItem(
-                    descricao="Estruturação da EAP por disciplinas",
-                    unidade="serviço",
-                    preco_unitario=0.0,
-                    preco_total=0.0,
-                ),
-            ],
-        ),
-        EAPItem(
-            descricao="Consolidação de materiais e componentes identificados",
-            unidade="serviço",
-            preco_unitario=0.0,
-            preco_total=0.0,
-            observacoes="Revisar manualmente antes de usar em orçamento.",
-        ),
-    ]
-
-    materiais = []
-    for idx, hit in enumerate(hits[:18], start=1):
-        materiais.append(
-            MaterialItem(
-                descricao=hit[:140],
-                unidade="un",
-                quantidade="1",
-                origem=f"Linha heurística {idx}",
-                confianca=0.3,
-                categoria="Heurística",
-            )
-        )
-
-    return {
-        "tipo_projeto": "Não identificado",
-        "resumo": "Resultado gerado por heurística porque a IA não foi acionada.",
-        "avisos": [
-            "A chave da IA não foi encontrada. O sistema gerou uma estrutura inicial automática.",
-            "Revise manualmente itens, unidades e quantidades antes de usar no orçamento.",
-        ],
-        "eap": [item.to_dict() for item in eap],
-        "materiais": [item.to_dict() for item in materiais],
-    }
-
-
 def _parse_json_response(raw_text: str) -> dict[str, Any]:
     try:
         return json.loads(raw_text)
@@ -117,7 +37,7 @@ def _parse_json_response(raw_text: str) -> dict[str, Any]:
 
 def _call_openai(document_text: str, api_key: str, model: str) -> dict[str, Any]:
     client = OpenAI(api_key=api_key)
-    prompt = f"""
+    prompt_analise = f"""
 Você é um assistente especializado em orçamentos de engenharia, arquitetura e levantamento quantitativo.
 
 Leia o texto do projeto e retorne SOMENTE JSON válido, em português, com esta estrutura:
@@ -168,9 +88,45 @@ Texto do projeto:
         model=model,
         messages=[
             {"role": "system", "content": "Responda somente com JSON válido em português."},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": prompt_analise},
         ],
         temperature=0.2,
+    )
+    raw_text = response.choices[0].message.content or "{}"
+    parsed = _parse_json_response(raw_text)
+    return _review_and_refine_with_ai(client=client, model=model, document_text=document_text, parsed_payload=parsed)
+
+
+def _review_and_refine_with_ai(client: OpenAI, model: str, document_text: str, parsed_payload: dict[str, Any]) -> dict[str, Any]:
+    prompt_revisao = f"""
+Você é uma etapa de validação de um agente de IA de orçamento.
+
+Sua tarefa é revisar o JSON abaixo e devolver uma versão final:
+- mantenha apenas linhas que sejam realmente materiais, componentes, serviços técnicos de orçamento ou itens da EAP;
+- remova texto de observação, conclusão, recomendação geral, títulos soltos e frases que não representem material;
+- corrija acentuação e português;
+- mantenha a estrutura em português;
+- garanta que a EAP tenha numeração lógica;
+- garanta que os materiais sejam objetivos e pertinentes;
+- se um item for dúvida, reduza a confiança ou exclua;
+- se faltar informação, ajuste para um resultado mais conservador;
+- não adicione preços reais, apenas zero nas colunas de preço;
+- responda somente com JSON válido e nada mais.
+
+Texto do projeto:
+{_clip(document_text)}
+
+JSON atual:
+{json.dumps(parsed_payload, ensure_ascii=False, indent=2)}
+""".strip()
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "Você revisa e corrige saídas de um agente de orçamento. Responda somente com JSON."},
+            {"role": "user", "content": prompt_revisao},
+        ],
+        temperature=0.1,
     )
     raw_text = response.choices[0].message.content or "{}"
     return _parse_json_response(raw_text)
@@ -204,8 +160,8 @@ def _normalize_eap_nodes(nodes: list[dict[str, Any]], parent_code: str = "") -> 
                 "descricao": str(item.get("descricao") or item.get("description") or item.get("name") or "Item sem descrição"),
                 "unidade": str(item.get("unidade") or item.get("unit") or ""),
                 "quantidade": str(item.get("quantidade") or item.get("quantity") or ""),
-                "preco_unitario": float(item.get("preco_unitario") or item.get("unit_price") or 0.0),
-                "preco_total": float(item.get("preco_total") or item.get("total_price") or 0.0),
+                "preco_unitario": 0.0,
+                "preco_total": 0.0,
                 "observacoes": str(item.get("observacoes") or item.get("description") or ""),
                 "filhos": children,
             }
@@ -287,14 +243,8 @@ def process_pdf(file_bytes: bytes, filename: str, api_key: str | None, model: st
     if len(document_text.strip()) < 80:
         raise ValueError("O PDF não possui texto legível suficiente para análise.")
 
-    if api_key:
-        try:
-            data = _call_openai(document_text=document_text, api_key=api_key, model=model)
-            return _normalize_result(data, filename=filename, pages=pages, used_ai=True)
-        except Exception as exc:  # noqa: BLE001
-            fallback = _heuristic_extract(document_text)
-            fallback["avisos"].insert(0, f"Falha ao consultar a IA. Saída heurística usada: {exc}")
-            return _normalize_result(fallback, filename=filename, pages=pages, used_ai=False)
+    if not api_key:
+        raise RuntimeError("A IA não pode ser acionada sem OPENAI_API_KEY configurada.")
 
-    fallback = _heuristic_extract(document_text)
-    return _normalize_result(fallback, filename=filename, pages=pages, used_ai=False)
+    data = _call_openai(document_text=document_text, api_key=api_key, model=model)
+    return _normalize_result(data, filename=filename, pages=pages, used_ai=True)
