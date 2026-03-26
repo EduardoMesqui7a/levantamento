@@ -97,8 +97,8 @@ class DataFrameExports:
             }
         )
 
-    def _merge_title_block(self, ws, end_col: int) -> None:
-        for row in range(1, 5):
+    def _merge_title_block(self, ws, end_col: int, end_row: int = 4) -> None:
+        for row in range(1, end_row + 1):
             ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=end_col)
             cell = ws.cell(row=row, column=1)
             cell.alignment = Alignment(vertical="center", wrap_text=True)
@@ -264,7 +264,7 @@ class DataFrameExports:
         )
 
         ws_resumo = wb.create_sheet("Resumo")
-        self._merge_title_block(ws_resumo, end_col=2)
+        self._merge_title_block(ws_resumo, end_col=2, end_row=2)
         ws_resumo["A1"] = "RESUMO DO LEVANTAMENTO"
         ws_resumo["A1"].font = Font(size=18, bold=True, color=PALETA["verde"])
         ws_resumo.row_dimensions[3].height = 34
