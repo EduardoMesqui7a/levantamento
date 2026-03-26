@@ -26,6 +26,9 @@ OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-4o-mini
 ```
 
+For local development, you can also create a private file at `.streamlit/secrets.toml` with the same keys.
+That file is ignored by Git and will be read automatically by Streamlit.
+
 4. Run the app:
 
 ```bash
