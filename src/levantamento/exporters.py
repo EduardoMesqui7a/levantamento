@@ -264,13 +264,25 @@ class DataFrameExports:
         )
 
         ws_resumo = wb.create_sheet("Resumo")
-        self._merge_title_block(ws_resumo, end_col=2, end_row=2)
         ws_resumo["A1"] = "RESUMO DO LEVANTAMENTO"
         ws_resumo["A1"].font = Font(size=18, bold=True, color=PALETA["verde"])
+        ws_resumo.merge_cells("A1:B1")
+        ws_resumo["A2"] = f"Projeto: {self.result.get('tipo_projeto', 'Não identificado')}"
+        ws_resumo["A2"].font = Font(size=11, color=PALETA["texto"])
+        ws_resumo.merge_cells("A2:B2")
+        for row in (1, 2):
+            ws_resumo.cell(row=row, column=1).fill = PatternFill("solid", fgColor=PALETA["verde_claro"])
+            ws_resumo.cell(row=row, column=1).border = Border(
+                left=Side(style="thin", color=PALETA["cinza"]),
+                right=Side(style="thin", color=PALETA["cinza"]),
+                top=Side(style="thin", color=PALETA["cinza"]),
+                bottom=Side(style="thin", color=PALETA["cinza"]),
+            )
+        ws_resumo.row_dimensions[1].height = 26
+        ws_resumo.row_dimensions[2].height = 22
         ws_resumo.row_dimensions[3].height = 34
         ws_resumo.row_dimensions[4].height = 24
         resumo_linhas = [
-            ("Tipo de projeto", self.result.get("tipo_projeto", "Não identificado")),
             ("Resumo", self.result.get("resumo", "")),
             ("Avisos", " | ".join(self.result.get("avisos", [])) or "Nenhum"),
             ("Arquivo de origem", self.result.get("metadados", {}).get("arquivo", "")),
