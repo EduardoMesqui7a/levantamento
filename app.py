@@ -37,7 +37,6 @@ def _get_api_key() -> str:
     return (
         os.getenv("OPENAI_API_KEY")
         or _get_secret("OPENAI_API_KEY", "")
-        or os.getenv("OPENAI_API_KEY_LOCAL", "")
     )
 
 
@@ -74,17 +73,11 @@ def main() -> None:
             key="openai_model",
         )
         api_key_loaded = bool(_get_api_key())
-        st.text_input(
-            "OpenAI API key",
-            value=_get_api_key(),
-            type="password",
-            key="openai_key",
-            help="Loaded from local secrets/environment. You can override it here for temporary tests.",
-        )
-        st.caption(
-            "API key loaded automatically." if api_key_loaded else "No API key detected yet."
-        )
-        st.caption("Tip: rotate any exposed API key before production use.")
+        if api_key_loaded:
+            st.success("API key loaded automatically.")
+        else:
+            st.warning("No API key detected. Add one to .streamlit/secrets.toml or your environment.")
+        st.caption("The key is never entered in the UI and is only read from secrets/environment.")
 
     uploaded = st.file_uploader("Upload project PDF", type=["pdf"])
     run = st.button("Process PDF", type="primary", disabled=uploaded is None)
@@ -100,7 +93,7 @@ def main() -> None:
                 st.session_state.result = process_pdf(
                     file_bytes=uploaded.getvalue(),
                     filename=uploaded.name,
-                    api_key=st.session_state.openai_key.strip() or _get_api_key() or None,
+                    api_key=_get_api_key() or None,
                     model=st.session_state.openai_model.strip() or os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 )
                 st.session_state.raw_error = None
