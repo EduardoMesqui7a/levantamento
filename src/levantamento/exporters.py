@@ -57,6 +57,35 @@ def _flatten_materiais(items):
     return rows
 
 
+def _flatten_audit(audit: dict[str, object] | None) -> list[dict[str, object]]:
+    if not audit:
+        return []
+
+    rows: list[dict[str, object]] = []
+    for sinal in audit.get("sinais_confirmados", []) or []:
+        rows.append({"tipo": "Sinal confirmado", "descricao": str(sinal), "motivo": "", "categoria": ""})
+    for criterio in audit.get("criterios_aceitacao", []) or []:
+        rows.append({"tipo": "Critério", "descricao": str(criterio), "motivo": "", "categoria": ""})
+    for item in audit.get("itens_rejeitados", []) or []:
+        rows.append(
+            {
+                "tipo": "Rejeitado",
+                "descricao": str(item.get("descricao", "")),
+                "motivo": str(item.get("motivo", "")),
+                "categoria": str(item.get("categoria", "")),
+            }
+        )
+    rows.append(
+        {
+            "tipo": "Confiança global",
+            "descricao": f"{float(audit.get('confianca_global', 0.0) or 0.0):.0%}",
+            "motivo": str(audit.get("observacoes_finais", "")),
+            "categoria": "",
+        }
+    )
+    return rows
+
+
 def result_to_json(result) -> str:
     if is_dataclass(result):
         result = asdict(result)
@@ -296,6 +325,42 @@ class DataFrameExports:
             ws_resumo.cell(row=row_idx, column=1).font = Font(bold=True, color=PALETA["texto"])
             ws_resumo.cell(row=row_idx, column=2).alignment = Alignment(wrap_text=True)
         self._set_widths(ws_resumo, {"A": 22, "B": 84})
+
+        ws_auditoria = wb.create_sheet("Auditoria")
+        self._merge_title_block(ws_auditoria, end_col=4)
+        ws_auditoria["A1"] = "AUDITORIA TÉCNICA"
+        ws_auditoria["A1"].font = Font(size=18, bold=True, color=PALETA["verde"])
+        ws_auditoria["A2"] = f"Projeto: {self.result.get('tipo_projeto', 'Não identificado')}"
+        ws_auditoria["A2"].font = Font(size=11, color=PALETA["texto"])
+        ws_auditoria["A3"] = "Revisão final dos sinais técnicos, critérios de aceitação e itens descartados pela IA."
+        ws_auditoria["A3"].font = Font(size=10, color=PALETA["texto"])
+        ws_auditoria["A4"] = "A aba serve para transparência da análise e rastreabilidade do raciocínio técnico."
+        ws_auditoria["A4"].font = Font(size=10, color=PALETA["texto"])
+
+        audit_headers = ["TIPO", "DESCRIÇÃO", "MOTIVO", "CATEGORIA"]
+        for col, header in enumerate(audit_headers, start=1):
+            cell = ws_auditoria.cell(row=6, column=col, value=header)
+            cell.font = Font(bold=True, color=PALETA["branco"])
+            cell.fill = PatternFill("solid", fgColor=PALETA["azul_escuro"])
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        audit_rows = _flatten_audit(self.result.get("auditoria", {}))
+        for row_idx, row in enumerate(audit_rows, start=7):
+            ws_auditoria.cell(row=row_idx, column=1, value=row["tipo"])
+            ws_auditoria.cell(row=row_idx, column=2, value=row["descricao"])
+            ws_auditoria.cell(row=row_idx, column=3, value=row["motivo"])
+            ws_auditoria.cell(row=row_idx, column=4, value=row["categoria"])
+
+        self._style_sheet(ws_auditoria, header_row=6, freeze_cell="A7")
+        self._set_widths(
+            ws_auditoria,
+            {
+                "A": 18,
+                "B": 56,
+                "C": 56,
+                "D": 18,
+            },
+        )
 
         buffer = io.BytesIO()
         wb.save(buffer)

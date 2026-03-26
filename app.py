@@ -205,6 +205,7 @@ def main() -> None:
     avisos = result.get("avisos", [])
     metadados = result.get("metadados", {})
     perfil = result.get("perfil_documento", {}) or {}
+    auditoria = result.get("auditoria", {}) or {}
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Páginas", metadados.get("paginas", 0))
@@ -237,6 +238,34 @@ def main() -> None:
                 if evidencias_visuais:
                     st.markdown("**Visuais**")
                     st.write("\n".join(f"- {item}" for item in evidencias_visuais))
+
+    if auditoria:
+        confianca_global = float(auditoria.get("confianca_global", 0.0) or 0.0)
+        st.info(
+            f"Auditoria técnica concluída | Confiança global da revisão: {confianca_global:.0%}"
+        )
+        with st.expander("Auditoria da IA"):
+            sinais = auditoria.get("sinais_confirmados", []) or []
+            criterios = auditoria.get("criterios_aceitacao", []) or []
+            rejeitados = auditoria.get("itens_rejeitados", []) or []
+            observacoes_finais = auditoria.get("observacoes_finais", "")
+
+            if sinais:
+                st.markdown("**Sinais confirmados**")
+                st.write("\n".join(f"- {item}" for item in sinais))
+            if criterios:
+                st.markdown("**Critérios de aceitação**")
+                st.write("\n".join(f"- {item}" for item in criterios))
+            if rejeitados:
+                st.markdown("**Itens rejeitados pela auditoria**")
+                for item in rejeitados:
+                    descricao = item.get("descricao", "")
+                    motivo = item.get("motivo", "")
+                    categoria = item.get("categoria", "")
+                    st.write(f"- {descricao} | {categoria} | {motivo}")
+            if observacoes_finais:
+                st.markdown("**Observações finais**")
+                st.write(observacoes_finais)
 
     if avisos:
         st.warning("\n".join(f"- {aviso}" for aviso in avisos))

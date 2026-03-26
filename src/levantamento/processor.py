@@ -194,6 +194,12 @@ Revise o JSON abaixo e devolva uma versão final:
 - mantenha preços zerados;
 - responda somente com JSON válido e nada mais.
 
+Inclua também uma seção de auditoria técnica com:
+- sinais confirmados do documento;
+- critérios usados para aceitar os itens;
+- itens rejeitados e o motivo da rejeição;
+- observações finais sobre a confiança da análise.
+
 Perfil do documento:
 {json.dumps(profile, ensure_ascii=False, indent=2)}
 
@@ -252,6 +258,45 @@ def _call_openai(api_key: str, model: str, pages) -> dict[str, Any]:
     return final_data
 
 
+def _normalize_audit(audit_data: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    rejected_items = audit_data.get("itens_rejeitados", []) or []
+    normalized_rejected = []
+    for item in rejected_items:
+        if isinstance(item, str):
+            normalized_rejected.append(
+                {
+                    "descricao": item,
+                    "motivo": "Item rejeitado pela auditoria técnica.",
+                    "categoria": "Rejeitado",
+                }
+            )
+            continue
+        normalized_rejected.append(
+            {
+                "descricao": str(item.get("descricao") or item.get("item") or item.get("text") or ""),
+                "motivo": str(item.get("motivo") or item.get("reason") or ""),
+                "categoria": str(item.get("categoria") or item.get("category") or "Rejeitado"),
+            }
+        )
+
+    return {
+        "sinais_confirmados": list(
+            audit_data.get("sinais_confirmados")
+            or audit_data.get("sinais_detectados")
+            or profile.get("evidencias_textuais", [])
+            or []
+        ),
+        "criterios_aceitacao": list(audit_data.get("criterios_aceitacao") or audit_data.get("criterios") or []),
+        "itens_rejeitados": normalized_rejected,
+        "confianca_global": float(audit_data.get("confianca_global") or audit_data.get("confidence") or 0.0),
+        "observacoes_finais": str(
+            audit_data.get("observacoes_finais")
+            or audit_data.get("observacoes")
+            or "Auditoria técnica concluída."
+        ),
+    }
+
+
 def _normalize_materials(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = []
     for item in items:
@@ -307,6 +352,7 @@ def _normalize_result(data: dict[str, Any], filename: str, pages, used_ai: bool)
     materiais = _normalize_materials(data.get("materiais", []) or data.get("materials", []) or [])
     avisos = list(data.get("avisos", []) or data.get("warnings", []) or [])
     perfil_documento = data.get("perfil_documento", {}) or {}
+    auditoria = _normalize_audit(data.get("auditoria", {}) or {}, perfil_documento)
 
     if not eap:
         eap = [
@@ -350,6 +396,7 @@ def _normalize_result(data: dict[str, Any], filename: str, pages, used_ai: bool)
         "resumo": data.get("resumo", ""),
         "avisos": avisos,
         "perfil_documento": perfil_documento,
+        "auditoria": auditoria,
         "eap": eap,
         "materiais": materiais,
         "metadados": {
@@ -364,6 +411,7 @@ def _normalize_result(data: dict[str, Any], filename: str, pages, used_ai: bool)
             "curvas_vetoriais": sum(page.curve_count for page in pages),
             "preenchimentos_vetoriais": sum(page.fill_count for page in pages),
             "imagens_embutidas": sum(page.image_count for page in pages),
+            "linhas_detectadas": sum(page.line_count for page in pages),
         },
         "total_itens_eap": _count_nodes(eap),
     }
