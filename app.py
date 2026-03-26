@@ -204,12 +204,39 @@ def main() -> None:
     resumo = result.get("resumo", "")
     avisos = result.get("avisos", [])
     metadados = result.get("metadados", {})
+    perfil = result.get("perfil_documento", {}) or {}
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Páginas", metadados.get("paginas", 0))
     c2.metric("Caracteres", metadados.get("caracteres_extraidos", 0))
     c3.metric("Materiais", len(result.get("materiais", [])))
     c4.metric("Itens da EAP", result.get("total_itens_eap", 0))
+
+    v1, v2, v3, v4 = st.columns(4)
+    v1.metric("Páginas vetoriais", metadados.get("paginas_vetoriais", 0))
+    v2.metric("Linhas", metadados.get("linhas_vetoriais", 0))
+    v3.metric("Retângulos", metadados.get("retangulos_vetoriais", 0))
+    v4.metric("Imagens", metadados.get("imagens_embutidas", 0))
+
+    if perfil:
+        disciplina = perfil.get("disciplina_principal", "Não identificada")
+        confianca = float(perfil.get("confianca", 0.0) or 0.0)
+        sistemas = perfil.get("sistemas_identificados", []) or []
+        evidencias_textuais = perfil.get("evidencias_textuais", []) or []
+        evidencias_visuais = perfil.get("evidencias_visuais", []) or []
+
+        st.success(f"Classificação técnica: {disciplina} | Confiança: {confianca:.0%}")
+        if sistemas:
+            st.markdown("**Sistemas identificados**")
+            st.write(", ".join(str(item) for item in sistemas))
+        if evidencias_textuais or evidencias_visuais:
+            with st.expander("Evidências usadas pela IA"):
+                if evidencias_textuais:
+                    st.markdown("**Textuais**")
+                    st.write("\n".join(f"- {item}" for item in evidencias_textuais))
+                if evidencias_visuais:
+                    st.markdown("**Visuais**")
+                    st.write("\n".join(f"- {item}" for item in evidencias_visuais))
 
     if avisos:
         st.warning("\n".join(f"- {aviso}" for aviso in avisos))

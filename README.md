@@ -7,6 +7,7 @@ Aplicação em Streamlit para enviar projetos em PDF e gerar uma EAP estruturada
 - Upload de PDF
 - Extração de texto por página
 - OCR opcional para páginas escaneadas
+- Extração de texto, desenho vetorial e imagem renderizada das páginas
 - Geração de EAP em português com numeração automática
 - Lista de materiais em português revisada por IA
 - Download em Excel com cores e hierarquia
@@ -64,5 +65,7 @@ OPENAI_MODEL = "gpt-4o-mini"
 
 - A aplicação está em português.
 - A saída depende da IA para análise, validação e filtragem.
+- O pipeline considera texto, linhas, hachuras, formas e imagens do PDF.
+- A IA atua com um perfil de engenheiro estrutural sênior.
 - A chave OpenAI é obrigatória para gerar o resultado.
 - Os valores de `PREÇO UNITÁRIO` e `PREÇO TOTAL` são gerados como `0,00` até você integrar sua base de custos.
